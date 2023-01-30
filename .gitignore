@@ -256,3 +256,7 @@ crashlytics-build.properties
 fabric.properties
 
 torch_pack.whl
+__pycache__
+runs
+torchvision
+venv
