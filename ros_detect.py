@@ -25,6 +25,10 @@ from utils.torch_utils import select_device
 
 class ImageListener:
     def __init__(self, topic):
+        self.VIZ = False
+        self.save_video = True
+        self.only_detect_specified = True
+        self.specified_obj = {0:0.15, 32:0.0075} # 0: human, 32: sports ball
         self.topic = topic
         self.bridge = CvBridge()
         ##
@@ -33,6 +37,11 @@ class ImageListener:
         # Directories
         save_dir = Path(increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok))  # increment run
         (save_dir / 'labels' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
+        self.save_dir = save_dir
+
+        # Record video
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        self.video_out = cv2.VideoWriter(os.path.join(save_dir, 'output.mp4'), fourcc, 15, (640,  480))
 
         # Initialize
         set_logging()
@@ -56,9 +65,6 @@ class ImageListener:
             self.modelc = modelc
         '''
 
-        # Set Dataloader
-        vid_path, vid_writer = None, None
-
         # Get names and colors
         names = model.module.names if hasattr(model, 'module') else model.names
         colors = [[random.randint(0, 255) for _ in range(3)] for _ in names]
@@ -75,7 +81,6 @@ class ImageListener:
         self.save_txt = save_txt
         self.view_img = True
         self.colors = colors
-        self.only_detect_human = True
         
         # print(self.names)
         self.sub = rospy.Subscriber(topic, msg_Image, self.imageDepthCallback)
@@ -171,9 +176,21 @@ class ImageListener:
                     c = int(cls)  # integer class
                     if c == 0:
                         pub_msg.data = True
-                    if self.only_detect_human:
-                        if c != 0:
+                    if self.only_detect_specified:
+                        if c in self.specified_obj:
+                            xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()
+                            ratio = xywh[2]*xywh[3]
+                            print('Ratio [{}]'.format(c), ratio)
+                            if ratio < self.specified_obj[c]:
+                                continue
+                        else:
                             continue
+
+                    # if c != 0:# 32, 0
+                    #     continue
+                    # xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()
+                    # print('Ratio', xywh[2]*xywh[3])
+
 
                     if self.save_txt:  # Write to file
                         xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
@@ -187,19 +204,27 @@ class ImageListener:
         
         self.pub.publish(pub_msg)
 
-        cv2.imshow(str(p), annotator.im)
+        if self.VIZ:
+            cv2.imshow(str(p), annotator.im)
+            
+        if self.save_video:
+            self.video_out.write(annotator.im)
+
         cv2.waitKey(1)
 
 def main():
-    topic = '/d400/color/image_raw'
-    listener = ImageListener(topic)
-    rospy.spin()
+    try:
+        topic = '/d400/color/image_raw'
+        listener = ImageListener(topic)
+        rospy.spin()
+    except:
+        listener.video_out.release()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', nargs='+', type=str, default=os.path.join(os.getcwd(),'yolov5s.pt'), help='model.pt path(s)')
     parser.add_argument('--img-size', type=int, default=640, help='inference size (pixels)')
-    parser.add_argument('--conf-thres', type=float, default=0.25, help='object confidence threshold')
+    parser.add_argument('--conf-thres', type=float, default=0.4, help='object confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.45, help='IOU threshold for NMS')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--view-img', action='store_true', help='display results')
