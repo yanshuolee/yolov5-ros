@@ -186,6 +186,7 @@ class ImageListener:
                         else:
                             continue
 
+                    # test
                     # if c != 0:# 32, 0
                     #     continue
                     # xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()
