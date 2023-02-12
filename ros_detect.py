@@ -1,6 +1,6 @@
 import rospy
 from sensor_msgs.msg import Image as msg_Image
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, String
 import cv2
 from cv_bridge import CvBridge, CvBridgeError
 import sys
@@ -21,6 +21,7 @@ from utils.general import check_img_size, check_requirements, non_max_suppressio
 # from utils.plots import plot_one_box
 from utils.plots import Annotator, colors, save_one_box
 from utils.torch_utils import select_device
+from datetime import datetime
 
 
 class ImageListener:
@@ -81,10 +82,12 @@ class ImageListener:
         self.save_txt = save_txt
         self.view_img = True
         self.colors = colors
-        
+        self.found_=[]
+        self.st = time.time()
+
         # print(self.names)
         self.sub = rospy.Subscriber(topic, msg_Image, self.imageDepthCallback)
-        self.pub = rospy.Publisher('/yolov5/detect_human', Bool, queue_size=10)
+        self.pub = rospy.Publisher('/yolov5/detect_human', String, queue_size=10)
         rate = rospy.Rate(10)
         print('__init__ finished!')
 
@@ -150,7 +153,7 @@ class ImageListener:
             pred = apply_classifier(pred, self.modelc, img, cv_image)
 
         # Process detections
-        pub_msg = Bool()
+        pub_msg = '' #Bool()
         for i, det in enumerate(pred):  # detections per image
             p, s, im0 = path, '', cv_image #, getattr(dataset, 'frame', 0)
 
@@ -174,15 +177,19 @@ class ImageListener:
                 # Write results
                 for *xyxy, conf, cls in reversed(det):
                     c = int(cls)  # integer class
-                    if c == 0:
-                        pub_msg.data = True
                     if self.only_detect_specified:
                         if c in self.specified_obj:
                             xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()
                             ratio = xywh[2]*xywh[3]
-                            print('Ratio [{}]'.format(c), ratio)
+                            print('[{}] Ratio [{}]'.format(datetime.now(), c), ratio)
                             if ratio < self.specified_obj[c]:
                                 continue
+                            # if c in self.found_:
+                            #     continue
+                            # if (c not in self.found_) and (time.time()-self.st > 150):
+                            #     pub_msg.data = True
+                            #     self.found_.append(c)
+                            pub_msg =  str(c)
                         else:
                             continue
 
